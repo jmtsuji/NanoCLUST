@@ -418,7 +418,7 @@ if(params.multiqc){
         racon_warnings.add("""Sample $barcode : Racon correction for cluster $cluster_id failed due to not enough overlaps. Taking draft read as consensus""")
      }
      """
-     if medaka_consensus --threads ${task.cpus} -i $corrected_reads -d $draft -o consensus_medaka.fasta -t 4 -m r941_min_high_g303 ; then
+     if medaka_consensus -i $corrected_reads -d $draft -o consensus_medaka.fasta -t ${task.cpus} -m r941_min_high_g303 ; then
         echo "Command succeeded"
      else
         cat $draft > consensus_medaka.fasta
