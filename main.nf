@@ -173,6 +173,9 @@ if(params.demultiplex) {
 
      script:
      kit = params.kit
+
+     cpus 4
+
      """
      qcat -f $reads -k $kit --trim -t ${task.cpus} -b .
      """
@@ -187,9 +190,11 @@ if(params.demultiplex_porechop){
         output:
         file("BC*.fastq.gz") into reads mode flatten
 
+        cpus 4
+
         script:
             """
-            porechop -i "${reads}" -t 4 -b .
+            porechop -i "${reads}" -t ${task.cpus} -b .
             """
     }
 }
@@ -257,9 +262,11 @@ if(params.multiqc){
      file "freqs.txt" into freqs
      tuple val(barcode), file(qced_reads) into freqs_qc_results
 
+     cpus 4
+
      script:
      """
-     kmer_freq.py -r $qced_reads > freqs.txt
+     kmer_freq.py -r $qced_reads -t ${task.cpus} > freqs.txt
      """
 
  }
@@ -321,9 +328,12 @@ if(params.multiqc){
      script:
      count=params.polishing_reads
      cluster_id=cluster_log.baseName
+
+     cpus 4
+
      """
      head -n\$(( $count*4 )) $reads > subset.fastq
-     canu -correct -p corrected_reads -nanopore-raw subset.fastq genomeSize=${params.avg_amplicon_size} stopOnLowCoverage=1 minInputCoverage=2 minReadLength=500 minOverlapLength=200
+     canu -correct -p corrected_reads -nanopore-raw subset.fastq genomeSize=${params.avg_amplicon_size} stopOnLowCoverage=1 minInputCoverage=2 minReadLength=500 minOverlapLength=200 maxThreads=${task.cpus}
      gunzip corrected_reads.correctedReads.fasta.gz
      READ_COUNT=\$(( \$(awk '{print \$1/2}' <(wc -l corrected_reads.correctedReads.fasta)) ))
      cat $cluster_log > ${cluster_id}_racon.log
@@ -341,12 +351,14 @@ if(params.multiqc){
      output:
      tuple val(barcode), val(cluster_id), file('*_draft.log'), file('draft_read.fasta'), file(reads) into draft
 
+     cpus 4
+
      script:
      """
      split -l 2 $reads split_reads
      find split_reads* > read_list.txt
 
-     fastANI --ql read_list.txt --rl read_list.txt -o fastani_output.ani -t 48 -k 16 --fragLen 160
+     fastANI --ql read_list.txt --rl read_list.txt -o fastani_output.ani -t ${task.cpus} -k 16 --fragLen 160
 
      DRAFT=\$(awk 'NR>1{name[\$1] = \$1; arr[\$1] += \$3; count[\$1] += 1}  END{for (a in arr) {print arr[a] / count[a], name[a] }}' fastani_output.ani | sort -rg | cut -d " " -f2 | head -n1)
      cat \$DRAFT > draft_read.fasta
@@ -368,11 +380,13 @@ if(params.multiqc){
      output:
      tuple val(barcode), val(cluster_id), file(cluster_log), file('racon_consensus.fasta'), file(corrected_reads), env(success) into racon_output
 
+     cpus 4
+
      script:
      """
      success=1
-     minimap2 -ax map-ont --no-long-join -r100 -a $draft_read $corrected_reads -o aligned.sam
-     if racon --quality-threshold=9 -w 250 $corrected_reads aligned.sam $draft_read > racon_consensus.fasta ; then
+     minimap2 -ax map-ont --no-long-join -r100 -a $draft_read $corrected_reads -o aligned.sam -t ${task.cpus}
+     if racon --quality-threshold=9 -w 250 -t ${task.cpus} $corrected_reads aligned.sam $draft_read > racon_consensus.fasta ; then
         success=1
      else
         success=0
@@ -396,13 +410,15 @@ if(params.multiqc){
      output:
      tuple val(barcode), val(cluster_id), file(cluster_log), file('consensus_medaka.fasta/consensus.fasta') into final_consensus
 
+     cpus 4
+
      script:
      if(success == "0"){
         log.warn """Sample $barcode : Racon correction for cluster $cluster_id failed due to not enough overlaps. Taking draft read as consensus"""
         racon_warnings.add("""Sample $barcode : Racon correction for cluster $cluster_id failed due to not enough overlaps. Taking draft read as consensus""")
      }
      """
-     if medaka_consensus -i $corrected_reads -d $draft -o consensus_medaka.fasta -t 4 -m r941_min_high_g303 ; then
+     if medaka_consensus --threads ${task.cpus} -i $corrected_reads -d $draft -o consensus_medaka.fasta -t 4 -m r941_min_high_g303 ; then
         echo "Command succeeded"
      else
         cat $draft > consensus_medaka.fasta
@@ -423,6 +439,8 @@ if(params.multiqc){
      output:
      file('consensus_classification.csv')
      tuple val(barcode), file('*_blast.log') into classifications_ch
+
+     cpus 4
 
      script:
      if(workflow.profile == 'conda' || workflow.profile == 'test,conda'){
@@ -448,7 +466,7 @@ if(params.multiqc){
         """
         export BLASTDB=
         export BLASTDB=\$BLASTDB:$taxdb
-        blastn -query $consensus -db $db -task blastn -dust no -outfmt "10 sscinames staxids evalue length pident" -evalue 11 -max_hsps 50 -max_target_seqs 5 | sed 's/,/;/g' > consensus_classification.csv
+        blastn -num_threads ${task.cpus} -query $consensus -db $db -task blastn -dust no -outfmt "10 sscinames staxids evalue length pident" -evalue 11 -max_hsps 50 -max_target_seqs 5 | sed 's/,/;/g' > consensus_classification.csv
         #DECIDE FINAL CLASSIFFICATION
         cat $cluster_log > ${cluster_id}_blast.log
         echo -n ";" >> ${cluster_id}_blast.log
