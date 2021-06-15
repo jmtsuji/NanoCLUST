@@ -185,7 +185,7 @@ if(params.demultiplex_porechop){
         file(reads) from multiplexed_reads_porechop
 
         output:
-        file("BC*.fastq") into reads mode flatten
+        file("BC*.fastq.gz") into reads mode flatten
 
         script:
             """
