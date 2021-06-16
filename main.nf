@@ -164,6 +164,7 @@ process get_software_versions {
 if(params.demultiplex) {
     process demultiplex {
      publishDir "${params.outdir}/demultiplexed_samples", mode: 'copy'
+     cpus 4
 
      input:
      file(reads) from multiplexed_reads
@@ -174,8 +175,6 @@ if(params.demultiplex) {
      script:
      kit = params.kit
 
-     cpus 4
-
      """
      qcat -f $reads -k $kit --trim -t ${task.cpus} -b .
      """
@@ -184,13 +183,13 @@ if(params.demultiplex) {
 
 if(params.demultiplex_porechop){
     process demultiplex_porechop {
+        cpus 4
+
         input:
         file(reads) from multiplexed_reads_porechop
 
         output:
         file("BC*.fastq.gz") into reads mode flatten
-
-        cpus 4
 
         script:
             """
@@ -250,6 +249,7 @@ if(params.multiqc){
 }
 
  process kmer_freqs {
+     cpus 4
      memory { 7.GB * task.attempt }
      time { 1.hour * task.attempt }
      errorStrategy { task.exitStatus in 137..140 ? 'retry' : 'terminate' }
@@ -261,8 +261,6 @@ if(params.multiqc){
      output:
      file "freqs.txt" into freqs
      tuple val(barcode), file(qced_reads) into freqs_qc_results
-
-     cpus 4
 
      script:
      """
@@ -314,6 +312,7 @@ if(params.multiqc){
  }
 
  process read_correction {
+     cpus 4
      memory { 7.GB * task.attempt }
      time { 1.hour * task.attempt }
      errorStrategy { task.exitStatus in 137..140 ? 'retry' : 'terminate' }
@@ -329,8 +328,6 @@ if(params.multiqc){
      count=params.polishing_reads
      cluster_id=cluster_log.baseName
 
-     cpus 4
-
      """
      head -n\$(( $count*4 )) $reads > subset.fastq
      canu -correct -p corrected_reads -nanopore-raw subset.fastq genomeSize=${params.avg_amplicon_size} stopOnLowCoverage=1 minInputCoverage=2 minReadLength=500 minOverlapLength=200 maxThreads=${task.cpus}
@@ -343,6 +340,7 @@ if(params.multiqc){
 
  process draft_selection {
      publishDir "${params.outdir}/${barcode}/cluster${cluster_id}", mode: 'copy', pattern: 'draft_read.fasta'
+     cpus 4
      errorStrategy 'retry'
 
      input:
@@ -350,8 +348,6 @@ if(params.multiqc){
 
      output:
      tuple val(barcode), val(cluster_id), file('*_draft.log'), file('draft_read.fasta'), file(reads) into draft
-
-     cpus 4
 
      script:
      """
@@ -369,6 +365,7 @@ if(params.multiqc){
  }
 
  process racon_pass {
+     cpus 4
      memory { 7.GB * task.attempt }
      time { 1.hour * task.attempt }
      errorStrategy { task.exitStatus in 137..140 ? 'retry' : 'terminate' }
@@ -379,8 +376,6 @@ if(params.multiqc){
 
      output:
      tuple val(barcode), val(cluster_id), file(cluster_log), file('racon_consensus.fasta'), file(corrected_reads), env(success) into racon_output
-
-     cpus 4
 
      script:
      """
@@ -397,6 +392,7 @@ if(params.multiqc){
  }
 
  process medaka_pass {
+     cpus 4
      memory { 7.GB * task.attempt }
      time { 1.hour * task.attempt }
      errorStrategy { task.exitStatus in 137..140 ? 'retry' : 'terminate' }
@@ -409,8 +405,6 @@ if(params.multiqc){
 
      output:
      tuple val(barcode), val(cluster_id), file(cluster_log), file('consensus_medaka.fasta/consensus.fasta') into final_consensus
-
-     cpus 4
 
      script:
      if(success == "0"){
@@ -430,6 +424,7 @@ if(params.multiqc){
  process consensus_classification {
      publishDir "${params.outdir}/${barcode}/cluster${cluster_id}", mode: 'copy', pattern: 'consensus_classification.csv'
      time '3m'
+     cpus 4
      errorStrategy { sleep(1000); return 'retry' }
      maxRetries 5
 
@@ -439,8 +434,6 @@ if(params.multiqc){
      output:
      file('consensus_classification.csv')
      tuple val(barcode), file('*_blast.log') into classifications_ch
-
-     cpus 4
 
      script:
      if(workflow.profile == 'conda' || workflow.profile == 'test,conda'){
